@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "LabelX",
+    "slug": "labelx",
+    "scheme": "labelx",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F5F5F0"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.labelx.app",
+      "usesAppleSignIn": true
+    },
+    "android": {
+      "edgeToEdgeEnabled": true,
+      "package": "com.labelx.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#F5F5F0"
+      }
+    },
+    "plugins": []
+  }
+}

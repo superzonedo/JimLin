@@ -1,0 +1,67 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 輔助函數：檢查使用者是否已認證
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // 輔助函數：檢查是否為資源擁有者
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // 注意：訂閱檢查在 Cloud Functions 中進行，這裡不檢查
+    
+    // users 集合
+    match /users/{userId} {
+      // 使用者可以讀取自己的資料
+      allow read: if isOwner(userId);
+      // 只能創建自己的資料
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      // 只能更新自己的資料（包括 preferences）
+      allow update: if isOwner(userId);
+      // 不允許刪除
+      allow delete: if false;
+      
+      // userProducts 子集合
+      match /userProducts/{productId} {
+        // 只能讀取自己的產品
+        allow read: if isOwner(userId);
+        // 只能由 Cloud Functions 創建（會繞過規則）
+        allow create: if false;
+        // 不允許更新或刪除（由 Cloud Functions 管理）
+        allow update, delete: if false;
+      }
+    }
+    
+    // customizedUsers 集合（追蹤有客製化的使用者）
+    match /customizedUsers/{userId} {
+      // 使用者可以讀取自己的記錄
+      allow read: if isOwner(userId);
+      // 使用者可以創建/更新自己的記錄（當更新 preferences 時）
+      allow write: if isOwner(userId);
+    }
+    
+    // products 集合
+    match /products/{productId} {
+      // 使用者可以讀取自己創建的產品
+      allow read: if isAuthenticated() && 
+                     resource.data.creatorId == request.auth.uid;
+      // 只能由 Cloud Functions 創建/更新（會繞過規則）
+      allow write: if false;
+    }
+    
+    // adminUsers 集合（後台使用者）
+    match /adminUsers/{adminId} {
+      // 只有後台使用者可以讀取自己的資料
+      allow read: if isAuthenticated() && 
+                     request.auth.uid == adminId &&
+                     resource.data.isAdmin == true;
+      // 只能由 Cloud Functions 創建/更新（會繞過規則）
+      allow write: if false;
+    }
+  }
+}
