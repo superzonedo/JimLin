@@ -20,24 +20,23 @@ details: "The OAuth client was not found."
 ### 步驟 1：確認 Client ID 和 Client Secret 匹配
 
 1. **前往 Google Cloud Console**：
-   - https://console.cloud.google.com/apis/credentials?project=您的實際專案 ID
+   - 前往 Credentials 頁面（請替換為您的實際專案 ID）
 
 2. **找到您的 Web Client ID**：
-   - `請從 Google Cloud Console 複製實際的 Client ID`
+   - 請從 Google Cloud Console 複製實際的 Client ID
 
 3. **確認 Client Secret**：
    - 點擊編輯（鉛筆圖示）
    - 查看 Client Secret
-   - 確認是否為：`請從 Google Cloud Console 複製實際的 Client Secret`
+   - 複製實際的 Client Secret（請從 Google Cloud Console 獲取）
 
 4. **確認專案 ID**：
-   - Client ID 開頭應該是 `您的實際專案 ID`
-   - 這應該與 Google Cloud 專案 ID 匹配
+   - Client ID 開頭應該與您的 Google Cloud 專案 ID 匹配
 
 ### 步驟 2：檢查後端日誌
 
 查看 Firebase Console Logs：
-1. 前往：https://console.firebase.google.com/project/lablex-api/logs
+1. 前往 Firebase Console 的 Logs 頁面（請替換為您的實際專案名稱）
 2. 選擇「Cloud Functions」
 3. 找到 `exchangeGoogleCode` 函數
 4. 查看最近的執行記錄
@@ -56,8 +55,8 @@ firebase functions:secrets:access GOOGLE_WEB_CLIENT_SECRET | head -c 20
 ```
 
 應該顯示：
-- Client ID: `請從 Google Cloud Console 複製實際的 Client ID`
-- Client Secret 開頭: `GOCSPX-hyYq_pTndFANU`
+- Client ID: 您的實際 Client ID
+- Client Secret 開頭: `GOCSPX-...`（前幾個字符）
 
 ## ✅ 解決方案
 
@@ -92,9 +91,9 @@ firebase functions:secrets:access GOOGLE_WEB_CLIENT_SECRET | head -c 20
 ### 方案 3：檢查專案 ID 是否匹配
 
 確認：
-- Google Cloud 專案 ID：`您的實際專案 ID`
-- Client ID 開頭：`您的實際專案 ID`
-- Firebase 專案：`lablex-api`
+- Google Cloud 專案 ID：您的實際專案 ID
+- Client ID 開頭：應該與專案 ID 匹配
+- Firebase 專案：您的實際 Firebase 專案名稱
 
 如果專案 ID 不匹配，需要：
 1. 使用正確專案的 Client ID 和 Secret
@@ -125,7 +124,7 @@ firebase functions:secrets:access GOOGLE_WEB_CLIENT_SECRET | head -c 20
 ## 📋 檢查清單
 
 - [ ] Client ID 和 Client Secret 來自同一個 Google Cloud 專案
-- [ ] Client ID 開頭與專案 ID 匹配（`您的實際專案 ID`）
+- [ ] Client ID 開頭與專案 ID 匹配
 - [ ] Client Secret 正確且未過期
 - [ ] Firebase Secrets 已正確設置
 - [ ] 函數已重新部署

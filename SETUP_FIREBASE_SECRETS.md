@@ -14,10 +14,10 @@
 cd /Users/superdo/Documents/labelx_backend
 
 # 設置 GOOGLE_WEB_CLIENT_ID
-echo "請從 Google Cloud Console 複製實際的 Client ID" | firebase functions:secrets:set GOOGLE_WEB_CLIENT_ID
+echo "YOUR_CLIENT_ID_HERE" | firebase functions:secrets:set GOOGLE_WEB_CLIENT_ID
 
 # 設置 GOOGLE_WEB_CLIENT_SECRET
-echo "請從 Google Cloud Console 複製實際的 Client Secret" | firebase functions:secrets:set GOOGLE_WEB_CLIENT_SECRET
+echo "YOUR_CLIENT_SECRET_HERE" | firebase functions:secrets:set GOOGLE_WEB_CLIENT_SECRET
 ```
 
 **或者手動輸入**：
@@ -25,11 +25,11 @@ echo "請從 Google Cloud Console 複製實際的 Client Secret" | firebase func
 ```bash
 # 設置 Client ID
 firebase functions:secrets:set GOOGLE_WEB_CLIENT_ID
-# 當提示時，輸入：請從 Google Cloud Console 複製實際的 Client ID
+# 當提示時，輸入您的實際 Client ID
 
 # 設置 Client Secret
 firebase functions:secrets:set GOOGLE_WEB_CLIENT_SECRET
-# 當提示時，輸入：請從 Google Cloud Console 複製實際的 Client Secret
+# 當提示時，輸入您的實際 Client Secret
 ```
 
 ### 步驟 2：確認 Secrets 已設置
@@ -67,7 +67,7 @@ firebase functions:secrets:access GOOGLE_WEB_CLIENT_SECRET
 
 ### 方法 2：查看 Firebase Console
 
-1. 前往：https://console.firebase.google.com/project/lablex-api/settings/functions/secrets
+1. 前往 Firebase Console 的 Secrets 頁面（請替換為您的實際專案名稱）
 2. 應該看到兩個 secrets：
    - `GOOGLE_WEB_CLIENT_ID`
    - `GOOGLE_WEB_CLIENT_SECRET`
@@ -104,7 +104,7 @@ firebase functions:secrets:access GOOGLE_WEB_CLIENT_SECRET
    - Secrets 設置後必須重新部署才會生效
 
 3. **查看 Firebase Console Logs**：
-   - 前往：https://console.firebase.google.com/project/lablex-api/logs
+   - 前往 Firebase Console 的 Logs 頁面（請替換為您的實際專案名稱）
    - 查看 `exchangeGoogleCode` 的執行記錄
 
 

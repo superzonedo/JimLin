@@ -6,10 +6,10 @@
 
 **在 Google Cloud Console 中確認**：
 
-1. 前往：https://console.cloud.google.com/apis/credentials?project=您的實際專案 ID
-2. 找到 Web Client ID：`請從 Google Cloud Console 複製實際的 Client ID`
+1. 前往 Google Cloud Console 的 Credentials 頁面
+2. 找到您的 Web Client ID（請從 Google Cloud Console 複製實際的 Client ID）
 3. 點擊編輯
-4. **確認 Client Secret 是否為**：`請從 Google Cloud Console 複製實際的 Client Secret`
+4. **確認 Client Secret**（請從 Google Cloud Console 複製實際的 Secret）
 
 **重要**：
 - 如果 Google Cloud Console 中顯示的 Client Secret **不同**，需要使用正確的 Secret
@@ -17,13 +17,13 @@
 
 ### 步驟 2：查看 Firebase Console Logs
 
-1. 前往：https://console.firebase.google.com/project/lablex-api/logs
+1. 前往 Firebase Console 的 Logs 頁面（請替換為您的實際專案名稱）
 2. 選擇「Cloud Functions」
 3. 找到 `exchangeGoogleCode` 函數
 4. 查看最近的執行記錄
 5. **查找日誌**：`交換 token 請求參數:`
 6. **確認**：
-   - `client_id` 是否為：`請從 Google Cloud Console 複製實際的 Client ID`
+   - `client_id` 是否為您的實際 Client ID
    - `client_secret` 開頭是否為：`GOCSPX-N0g1W...`
 
 ### 步驟 3：驗證 Secrets
@@ -39,8 +39,8 @@ firebase functions:secrets:access GOOGLE_WEB_CLIENT_SECRET | head -c 20
 ```
 
 **應該顯示**：
-- Client ID: `請從 Google Cloud Console 複製實際的 Client ID`
-- Client Secret 開頭: `GOCSPX-N0g1W...`
+- Client ID: 您的實際 Client ID
+- Client Secret 開頭: `GOCSPX-...`（前幾個字符）
 
 ## ✅ 如果 Client Secret 不正確
 
@@ -77,17 +77,17 @@ firebase deploy --only functions:exchangeGoogleCode
 
 ### 問題 3：專案 ID 不匹配
 
-**症狀**：Client ID 開頭不是 `您的實際專案 ID`
+**症狀**：Client ID 開頭與 Google Cloud 專案 ID 不匹配
 
 **解決**：
-1. 確認 Google Cloud 專案 ID 是 `您的實際專案 ID`
+1. 確認 Google Cloud 專案 ID
 2. 確認 Client ID 屬於這個專案
 
 ## 📋 檢查清單
 
-- [ ] Google Cloud Console 中顯示的 Client Secret 是 `請從 Google Cloud Console 複製實際的 Client Secret`
+- [ ] Google Cloud Console 中顯示的 Client Secret 已確認
 - [ ] Firebase Secrets 中的 Client Secret 與 Google Cloud Console 一致
-- [ ] Client ID 開頭是 `您的實際專案 ID`
+- [ ] Client ID 開頭與 Google Cloud 專案 ID 匹配
 - [ ] 函數已重新部署
 - [ ] 已查看 Firebase Console Logs 確認參數正確
 

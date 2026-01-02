@@ -9,18 +9,18 @@
 ### 步驟 1：在 Firebase Console 設置環境變數
 
 1. **前往 Firebase Console**：
-   - 訪問：https://console.firebase.google.com/project/lablex-api/settings/functions/config
+   - 訪問 Firebase Console 的 Functions 配置頁面（請替換為您的實際專案名稱）
    - 或：Firebase Console → 專案設定 → 函式 → 環境變數
 
 2. **添加環境變數**：
    - 點擊「**添加變數**」或「**新增變數**」
    - 添加第一個變數：
      - **名稱**：`GOOGLE_WEB_CLIENT_ID`
-     - **值**：`請從 Google Cloud Console 複製實際的 Client ID`
+     - **值**：請從 Google Cloud Console 複製您的實際 Client ID
    - 點擊「**新增**」或「**儲存**」
    - 添加第二個變數：
      - **名稱**：`GOOGLE_WEB_CLIENT_SECRET`
-     - **值**：`請從 Google Cloud Console 複製實際的 Client Secret`
+     - **值**：請從 Google Cloud Console 複製您的實際 Client Secret
    - 點擊「**新增**」或「**儲存**」
 
 3. **確認變數已添加**：
