@@ -49,6 +49,29 @@ function generateResponseSchema(language: "zh-TW" | "zh-CN" | "en" = "en") {
       markets: { type: "array", description: "標示語言推測的市場/地區（如 AU/NZ, US, EU, CN）。", items: { type: "string" } },
       summary: { type: "string" },
       healthScore: { type: "number", description: "健康分數 (1-100)，根據核心評分演算法計算" },
+      scoreExplanation: {
+        type: "object",
+        description: "評分詳細說明，解釋為什麼得到這個分數",
+        properties: {
+          breakdown: {
+            type: "array",
+            description: "扣分明細，列出每個扣分項目",
+            items: {
+              type: "object",
+              properties: {
+                item: { type: "string", description: "扣分項目名稱" },
+                points: { type: "number", description: "扣除的分數（負數）" },
+                reason: { type: "string", description: "扣分原因說明" },
+              },
+              required: ["item", "points", "reason"],
+            },
+          },
+          calculation: { type: "string", description: "分數計算公式，如：100 - 10(紅綠燈) - 15(添加劑) = 75" },
+          mainFactors: { type: "array", description: "影響分數的主要因素（1-3個）", items: { type: "string" } },
+          improvementSuggestions: { type: "array", description: "如何改進此產品健康分數的建議（2-3個）", items: { type: "string" } },
+        },
+        required: ["breakdown", "calculation", "mainFactors", "improvementSuggestions"],
+      },
       verdictHeadline: { type: "string", description: "一句話總結，用於快速理解產品健康狀況" },
       quickTags: { type: "array", description: "快速標籤陣列，用於UI快速顯示關鍵資訊", items: { type: "string" } },
       healthProsCons: {
@@ -72,7 +95,8 @@ function generateResponseSchema(language: "zh-TW" | "zh-CN" | "en" = "en") {
           properties: {
             name: { type: "string" },
             category: { type: "string" },
-            riskLevel: { type: "string", enum: ["High", "Medium", "Low"] },
+            source: { type: "string", enum: ["natural", "synthetic"], description: "來源：natural=天然、synthetic=人工合成" },
+            riskLevel: { type: "string", enum: ["High", "Medium", "Low"], description: "風險等級：天然來源=Low，人工合成根據危害程度判定" },
             description: { type: "string" },
             potentialHarm: { type: "string" },
             carcinogenicity: { type: "string", enum: ["Group 1", "2A", "2B", "None", "Unknown"] },
@@ -80,7 +104,7 @@ function generateResponseSchema(language: "zh-TW" | "zh-CN" | "en" = "en") {
             positionWeight: { type: "number" },
             contextUse: { type: "string", enum: ["traditional", "industrial", "unknown"] },
           },
-          required: ["name", "category", "riskLevel", "description", "potentialHarm", "carcinogenicity", "positionWeight"],
+          required: ["name", "category", "source", "riskLevel", "description", "potentialHarm", "carcinogenicity", "positionWeight"],
         },
       },
       beneficialIngredients: {
@@ -176,12 +200,32 @@ function generateResponseSchema(language: "zh-TW" | "zh-CN" | "en" = "en") {
         },
       },
       personalizedRecommendation: { type: "string", description: "針對用戶的個人化建議" },
+      // Prompt 改進建議（簡化版 - 針對所有食品的通用建議）
+      promptImprovementSuggestions: {
+        type: "object",
+        description: "對評分系統的整體改進建議（簡潔版）",
+        properties: {
+          isScoreReasonable: {
+            type: "boolean",
+            description: "本次評分是否合理",
+          },
+          briefAssessment: {
+            type: "string",
+            description: "一句話評估本次評分的合理性（20字以內）",
+          },
+          topSuggestion: {
+            type: "string",
+            description: "最重要的一條改進建議，適用於所有食品類型（30字以內）",
+          },
+        },
+        required: ["isScoreReasonable", "briefAssessment", "topSuggestion"],
+      },
     },
     required: [
-      "productName", "productEmoji", "summary", "healthScore", "verdictHeadline", "quickTags", "healthProsCons",
+      "productName", "productEmoji", "summary", "healthScore", "scoreExplanation", "verdictHeadline", "quickTags", "healthProsCons",
       "additives", "beneficialIngredients", "concerningIngredients", "allIngredients",
       "dataQuality", "assumptions", "confidence",
-      "nutritionPer100", "trafficLights", "novaClass",
+      "nutritionPer100", "trafficLights", "novaClass", "promptImprovementSuggestions",
     ],
   };
 }
@@ -362,16 +406,53 @@ ${languageInstructions[language] || languageInstructions["en"]}
 **核心評分演算法 (HealthScore - 總分 100)：**
 請嚴格執行以下扣分邏輯得出 \`healthScore\`：
 - **基礎分**：100分
-- **營養紅綠燈**：每出現一個「紅燈」扣 10分（糖、鈉、飽和脂肪、纖維四個指標中，每個紅燈扣10分）
-- **添加劑風險**：每個 High Risk 添加劑扣 10分；Medium Risk 扣 5分；Low Risk 不扣分
-- **需關注成分風險**：每個 High Risk 需關注成分扣 8分；Medium Risk 扣 4分
-- **成分數量權重**：若成分總數超過 15 種，每多 5 種扣 3分（最多扣 9分）
-- **最低分**：1分（確保分數客觀且具備跨產品的可比性）
-- **計算方式**：healthScore = max(1, 100 - 紅綠燈扣分 - 添加劑扣分 - 需關注成分扣分 - 成分數量扣分）
-- **注意**：不考慮 NOVA 加工等級，純粹以成分本身的風險和數量來評分
+- **營養紅綠燈（僅在有明確數據時扣分）**：
+  * 只有當照片中明確顯示營養成分表的「數值」（如鈉 800mg、糖 25g）時，才進行紅綠燈扣分
+  * 如果照片中「沒有」顯示營養成分表的數值，則「不扣分」，並在 scoreExplanation 中說明「無法確認過量」
+  * 每出現一個「紅燈」扣 10分（糖、鈉、飽和脂肪、纖維四個指標）
+- **添加劑風險（區分天然與人工，致癌物重扣）**：
+  * **🔴 一級致癌 High Risk**：每個扣 **25分**
+    - 亞硝酸鈉/鉀(E250/E249) - IARC Group 1 關聯
+    - 苯甲酸鈉(E211) - 可生成苯(Group 1)
+    - 反式脂肪/氫化油/部分氫化植物油 - 零容忍
+  * **🟠 二級致癌 High Risk**：每個扣 **15分**
+    - 阿斯巴甜(E951) - IARC 2B
+    - 焦糖色素 E150c/E150d - 含4-MEI
+    - 二氧化鈦(E171) - 歐盟已禁
+    - 人工色素(E102/E110/E124/E129/E133) - 兒童食品一律 High
+  * **人工合成 Medium Risk**：每個扣 8分
+    - 其他人工防腐劑、人工甜味劑(糖精/甜蜜素)、人工乳化劑
+  * **天然來源 Low Risk**：不扣分
+    - 天然防腐劑(維生素E/C)、天然色素(β-胡蘿蔔素/葉綠素)、天然乳化劑(大豆卵磷脂)、天然甜味劑(甜菊糖苷)
+- **需關注成分風險**：
+  * High Risk 需關注成分：每個扣 8分
+  * Medium Risk 需關注成分：每個扣 4分
+  * Low Risk 需關注成分：不扣分
+  * **重要**：如果照片中沒有顯示成分的「含量數值」，則該成分的風險等級標為 Low（因無法判斷是否過量），並在 concerns 中說明「含有此成分，但無法確認是否過量」
+- **不考慮成分數量**：成分多不扣分，只看是否有「影響健康的成分」
+- **最低分**：1分
+- **計算方式**：healthScore = max(1, 100 - 營養紅綠燈扣分 - 添加劑扣分 - 需關注成分扣分）
+- **扣分權重**：一級致癌(-25) > 二級致癌(-15) > Medium(-8) > Low(0)
+- **核心原則**：致癌物優先識別並加重扣分，天然來源不扣分
+
+**評分說明 (scoreExplanation) - 必須詳細填寫：**
+- **breakdown** (陣列): 列出每個扣分項目，格式：
+  * item: 扣分項目名稱（如「High Risk 添加劑」「Medium Risk 添加劑 x2」）
+  * 如果某項目無法評估（如照片中沒有營養數據），則 points 為 0，reason 說明「照片中無營養成分表數值，無法確認是否過量」
+  * points: 扣除的分數（負數，如 -10）
+  * reason: 具體原因說明（${languageName}），如「鈉含量 800mg/100g 超過 600mg 閾值」
+- **calculation** (字串): 分數計算公式，如：「100 - 10(高鈉紅燈) - 10(低纖紅燈) - 5(防腐劑) = 75分」
+- **mainFactors** (陣列): 影響分數的主要因素（1-3個，${languageName}），如：
+  * 「高鈉含量是主要扣分因素」
+  * 「含有多種人工添加劑」
+- **improvementSuggestions** (陣列): 如何改進此產品健康分數的建議（2-3個，${languageName}），如：
+  * 「減少鈉含量至 400mg/100g 以下可提升 10 分」
+  * 「使用天然防腐劑替代人工防腐劑」
+  * 「增加膳食纖維含量至 6g/100g 以上」
 
 **輸出 JSON 結構優化（必須精準生成以下欄位以利 UI 呈現）：**
 - **healthScore**: 數字 (1-100)，根據上述評分演算法計算
+- **scoreExplanation**: 物件，包含 breakdown、calculation、mainFactors、improvementSuggestions
 - **verdictHeadline**: 一句話總結（${languageName}），例如：「高鈉零食含多種添加劑，高血壓患者請避開」或「天然全穀物，成分簡單營養豐富」
 - **quickTags**: 陣列（${languageName}），例如：["高鈉", "含致癌色素", "添加劑多", "含過敏原"] 或 ["成分簡單", "高纖維", "無添加糖"]
 - **healthProsCons**: 
@@ -397,15 +478,33 @@ ${languageInstructions[language] || languageInstructions["en"]}
 - 有百分比標示: max(0.4, min(1.0, 百分比/15))
 - 無資訊: 0.7
 
-**添加劑 (additives) - 只標記人工合成：**
-- **添加劑判定（嚴格識別）**：
-  * 嚴格識別「E 編碼」與常見化學名稱（如：5'-次黃嘌呤核苷磷酸二鈉、焦糖色素、羧甲基纖維素鈉）
-  * 區分「天然提取」與「人工合成」，人工合成應給予較高風險評估
+**添加劑 (additives) - 區分天然與人工來源：**
+- **添加劑判定（嚴格區分來源）**：
+  * 嚴格識別「E 編碼」與常見化學名稱
+  * **必須判斷來源**：每個添加劑必須標註 source: "natural" 或 "synthetic"
+  * 天然來源添加劑 → riskLevel: Low（不扣分）
+  * 人工合成添加劑 → 根據危害程度判定風險等級
   * 對於複合調味料中的添加劑，必須單獨識別並列出
-- 致癌物: 亞硝酸鈉(E250)、苯甲酸鈉(E211)、阿斯巴甜(E951)、人工色素(E102/E110/E124) → carcinogenicity: Group 1/2A/2B, riskLevel: High
-- 高風險: 反式脂肪、氫化油、人工香精 → riskLevel: High  
-- 中等風險: 人工防腐劑、人工甜味劑 → riskLevel: Medium
-- 低風險: 天然提取物(維生素C/E)、天然香料 → riskLevel: Low
+
+- **人工合成添加劑風險等級（致癌物優先識別）**：
+  * **🔴 一級致癌 High Risk（扣25分）**：
+    - 亞硝酸鈉(E250)、亞硝酸鉀(E249) → carcinogenicity: "Group 1"
+    - 苯甲酸鈉(E211) → carcinogenicity: "Group 1"（可生成苯）
+    - 反式脂肪、氫化油、部分氫化植物油 → carcinogenicity: "Group 1"
+  * **🟠 二級致癌 High Risk（扣15分）**：
+    - 阿斯巴甜(E951) → carcinogenicity: "2B"
+    - 焦糖色素 E150c/E150d → carcinogenicity: "2B"（含4-MEI）
+    - 二氧化鈦(E171) → carcinogenicity: "2B"（歐盟已禁）
+    - 人工色素 E102/E110/E124/E129/E133 → carcinogenicity: "2B"（兒童食品一律 High）
+  * **Medium Risk（扣8分）**：
+    - 其他人工防腐劑、人工甜味劑(糖精/甜蜜素)、人工乳化劑
+
+- **天然來源添加劑（Low Risk，不扣分）**：
+  * 天然防腐劑：維生素E/生育酚(E306-E309)、維生素C/抗壞血酸(E300)、迷迭香提取物
+  * 天然色素：β-胡蘿蔔素(E160a)、葉綠素(E140)、薑黃素(E100)、焦糖色素(E150a天然)
+  * 天然乳化劑：大豆卵磷脂(E322)、蛋黃卵磷脂
+  * 天然甜味劑：甜菊糖苷(E960)、羅漢果糖苷
+  * 天然香料、天然提取物、植物提取物
 - contextUse: 判斷是否為傳統/發酵食品中的正常成分
 - description: 說明添加劑的功能（如防腐、增色、調味等）和基本特性（${languageName}）
 - potentialHarm: 必須按照以下結構詳細說明（${languageName}）：
@@ -427,13 +526,14 @@ ${languageInstructions[language] || languageInstructions["en"]}
 
 **需關注成分 (concerningIngredients)：**
 - **必須包含以下成分類型**：
-  * 高糖成分：糖、蔗糖、果糖、葡萄糖、高果糖玉米糖漿、精製糖等（過量攝取需注意）
-  * 高鈉成分：鹽、食鹽、氯化鈉、鈉含量高的調味料等（過量攝取需注意）
-  * 高飽和脂肪：棕櫚油、椰子油、氫化油、反式脂肪等（過量攝取需注意）
-  * 精製碳水化合物：白麵粉、精製澱粉等（過量攝取需注意）
-- 風險等級判斷：
+  * 高糖成分：糖、蔗糖、果糖、葡萄糖、高果糖玉米糖漿、精製糖等
+  * 高鈉成分：鹽、食鹽、氯化鈉、鈉含量高的調味料等
+  * 高飽和脂肪：棕櫚油、椰子油、氫化油、反式脂肪等
+  * 精製碳水化合物：白麵粉、精製澱粉等
+- **風險等級判斷（重要：需有明確含量數據才能判定 High/Medium）**：
   * 兒童食品: 致癌物/反式脂肪/人工香精任何含量都危險 → High
-  * 一般食品: 反式脂肪/高果糖漿(>10%) → High, 精製糖(>15%)/高鈉(>600mg) → Medium, 天然糖分(<10%)/適量鈉(<300mg) → Low
+  * 一般食品（有明確含量數據時）: 反式脂肪/高果糖漿(>10%) → High, 精製糖(>15%)/高鈉(>600mg) → Medium
+  * **一般食品（無含量數據時）**: 列出成分，但風險等級標為 Low，concerns 中說明「含有此成分，但照片中無含量數據，無法確認是否過量」
   * 傳統食品: 醬油/味噌/起司高鈉不扣分
 - description: 說明成分的基本資訊、用途或特性（${languageName}）
 - concerns: 必須按照以下結構詳細說明（${languageName}）：
@@ -498,10 +598,12 @@ ${languageInstructions[language] || languageInstructions["en"]}
 - 注意：此欄位僅作為參考資訊顯示，不納入 healthScore 計算
 
 **紅綠燈 (trafficLights)：**
-- 糖: 固體>22.5g=紅, 飲料>11g=紅, 中間=黃, 低=綠
-- 鈉: >600mg=紅, >120mg=黃, 否則綠
-- 飽和脂肪: >5g=紅, >1.5g=黃
-- 纖維: <3g=紅, <6g=黃, ≥6g=綠
+- **重要**：只有當照片中明確顯示營養成分表的「數值」時，才填入紅綠燈狀態
+- 如果照片中「沒有」顯示某項營養素的數值，該項填 null（不是灰色、不是推測）
+- 糖: 固體>22.5g=紅, 飲料>11g=紅, 中間=黃, 低=綠，無數據=null
+- 鈉: >600mg=紅, >120mg=黃, 否則綠，無數據=null
+- 飽和脂肪: >5g=紅, >1.5g=黃，無數據=null
+- 纖維: <3g=紅, <6g=黃, ≥6g=綠，無數據=null
 
 **兒童特別警告 (childSpecificWarnings)：**
 - 含咖啡因不建議兒童飲用（${languageName}）
@@ -514,12 +616,25 @@ ${languageInstructions[language] || languageInstructions["en"]}
 
 **最後提醒：**
 - healthScore 必須根據上述評分演算法嚴格計算，確保客觀且具備跨產品的可比性
-- **不考慮 NOVA 加工等級**：評分純粹基於成分本身的風險（添加劑、需關注成分、營養紅綠燈）和成分數量
-- 嬰兒配方、保健食品等特殊品類，即使成分較多，只要添加劑風險低、營養均衡，仍可獲得較高分數
+- **不考慮 NOVA 加工等級和成分數量**：評分純粹基於成分本身的「風險等級」（添加劑、需關注成分）和營養紅綠燈（如有數據）
+- **如果照片中沒有營養成分表的數值**：不要假設或推測數值，直接說明「無法確認過量」，不扣營養紅綠燈分數
+- 嬰兒配方、保健食品等特殊品類，只要沒有中高風險添加劑，應獲得較高分數
 - verdictHeadline 必須是一句話總結，讓用戶在1秒內就能抓到重點
 - quickTags 必須精準反映產品的關鍵健康特徵（優點和缺點）
 - healthProsCons 必須客觀列出產品的優缺點，幫助用戶快速決策
 - 所有個人化建議必須使用白話文，避免過多專業術語
+
+**【Prompt 改進建議】(promptImprovementSuggestions) - 簡化版：**
+請用一句話評估本次評分是否合理，並提供一條最重要的改進建議（適用於所有食品類型）。
+
+- **isScoreReasonable** (布林值): 本次評分是否合理？true/false
+- **briefAssessment** (字串): 一句話評估（20字以內），如「評分合理」或「對特殊食品偏嚴格」
+- **topSuggestion** (字串): 最重要的一條改進建議（30字以內），例如：
+  - 「添加劑應區分天然與人工來源」
+  - 「成分數量扣分應設上限」
+  - 「高風險添加劑的權重可再提高」
+
+**注意：保持簡潔，避免過於複雜的分支邏輯，以免影響生成效率和成本。**
 
 ${getPersonalizedHealthSection()}
 
@@ -535,7 +650,8 @@ export default function PromptTestScreen() {
   const setCurrentResult = useFoodScanStore((s) => s.setCurrentResult);
   const addScanResult = useFoodScanStore((s) => s.addScanResult);
 
-  const [apiKey, setApiKey] = useState("AIzaSyAekNdcQi_rZAVnbJCMeuQHeP2XFi4wh7w");
+  // ⚠️ 注意：請不要在此硬編碼 API 金鑰，應從環境變數或安全存儲中讀取
+  const [apiKey, setApiKey] = useState("");
   const [prompt, setPrompt] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
@@ -545,6 +661,8 @@ export default function PromptTestScreen() {
   const [error, setError] = useState<string | null>(null);
   const [language, setLanguage] = useState<"zh-TW" | "zh-CN" | "en">("zh-TW");
   const [isIngredientsExpanded, setIsIngredientsExpanded] = useState(false); // 成分分析預設收合
+  const [isScoreExplanationExpanded, setIsScoreExplanationExpanded] = useState(false); // 評分說明預設收合
+  const [isPromptImprovementExpanded, setIsPromptImprovementExpanded] = useState(true); // Prompt 改進建議預設展開
   
   // 個人化健康設定（變數方式）
   const [diseases, setDiseases] = useState<string[]>(["高血壓"]); // 預設高血壓
@@ -964,7 +1082,7 @@ export default function PromptTestScreen() {
                 onChangeText={setNewDisease}
                 onSubmitEditing={addDisease}
               />
-              <Pressable
+                <Pressable
                 style={[styles.addButton, { backgroundColor: "#EF4444" }]}
                 onPress={addDisease}
               >
@@ -1020,7 +1138,7 @@ export default function PromptTestScreen() {
           <View style={styles.preferenceSection}>
             <Text style={[styles.preferenceLabel, { color: theme.primaryText }]}>
               ⚠️ 過敏原/避免食物
-            </Text>
+                    </Text>
             <View style={styles.preferenceInputRow}>
               <TextInput
                 style={[styles.preferenceInput, { color: theme.primaryText, borderColor: theme.cardBorder, flex: 1 }]}
@@ -1036,15 +1154,15 @@ export default function PromptTestScreen() {
               >
                 <Ionicons name="add" size={20} color="#FFFFFF" />
               </Pressable>
-            </View>
+                  </View>
             <View style={styles.tagContainer}>
               {allergens.map((item, index) => (
                 <View key={`allergen-${index}`} style={[styles.tag, { backgroundColor: "#FEF3C7", borderColor: "#F59E0B" }]}>
                   <Text style={[styles.tagText, { color: "#F59E0B" }]}>{item}</Text>
                   <Pressable onPress={() => removeAllergen(item)} hitSlop={8}>
                     <Ionicons name="close-circle" size={18} color="#F59E0B" />
-                  </Pressable>
-                </View>
+                </Pressable>
+          </View>
               ))}
             </View>
           </View>
@@ -1174,6 +1292,82 @@ export default function PromptTestScreen() {
                 {getRiskLevelLabel(result.healthScore || 50)}
               </Text>
             </View>
+
+            {/* 評分說明 - 可展開 */}
+            {result.scoreExplanation && (
+              <View style={styles.scoreExplanationSection}>
+                <Pressable 
+                  style={styles.scoreExplanationHeader}
+                  onPress={() => setIsScoreExplanationExpanded(!isScoreExplanationExpanded)}
+                >
+                  <View style={styles.scoreExplanationHeaderLeft}>
+                    <Ionicons name="calculator" size={18} color="#3B82F6" />
+                    <Text style={[styles.scoreExplanationTitle, { color: theme.primaryText }]}>
+                      📊 評分說明
+                    </Text>
+                  </View>
+                  <Ionicons 
+                    name={isScoreExplanationExpanded ? "chevron-up" : "chevron-down"} 
+                    size={20} 
+                    color={theme.secondaryText} 
+                  />
+                </Pressable>
+
+                {isScoreExplanationExpanded && (
+                  <View style={styles.scoreExplanationContent}>
+                    {/* 計算公式 */}
+                    {result.scoreExplanation.calculation && (
+                      <View style={[styles.calculationBox, { backgroundColor: '#EFF6FF', borderColor: '#3B82F6' }]}>
+                        <Text style={styles.calculationLabel}>📐 計算公式</Text>
+                        <Text style={styles.calculationText}>{result.scoreExplanation.calculation}</Text>
+                            </View>
+                          )}
+
+                    {/* 扣分明細 */}
+                    {result.scoreExplanation.breakdown?.length > 0 && (
+                      <View style={styles.breakdownSection}>
+                        <Text style={[styles.breakdownTitle, { color: theme.primaryText }]}>📋 扣分明細</Text>
+                        {result.scoreExplanation.breakdown.map((item: any, index: number) => (
+                          <View key={`breakdown-${index}`} style={[styles.breakdownItem, { backgroundColor: theme.gray50 }]}>
+                            <View style={styles.breakdownItemHeader}>
+                              <Text style={[styles.breakdownItemName, { color: theme.primaryText }]}>{item.item}</Text>
+                              <Text style={[styles.breakdownItemPoints, { color: '#EF4444' }]}>{item.points} 分</Text>
+                          </View>
+                            <Text style={[styles.breakdownItemReason, { color: theme.secondaryText }]}>{item.reason}</Text>
+                        </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* 主要因素 */}
+                    {result.scoreExplanation.mainFactors?.length > 0 && (
+                      <View style={styles.mainFactorsSection}>
+                        <Text style={[styles.mainFactorsTitle, { color: theme.primaryText }]}>🎯 主要影響因素</Text>
+                        {result.scoreExplanation.mainFactors.map((factor: string, index: number) => (
+                          <View key={`factor-${index}`} style={styles.mainFactorItem}>
+                            <Text style={styles.mainFactorBullet}>•</Text>
+                            <Text style={[styles.mainFactorText, { color: theme.secondaryText }]}>{factor}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+                    {/* 改進建議 */}
+                    {result.scoreExplanation.improvementSuggestions?.length > 0 && (
+                      <View style={[styles.improvementSection, { backgroundColor: '#D1FAE5', borderColor: '#10B981' }]}>
+                        <Text style={styles.improvementTitle}>💡 如何改進此產品分數</Text>
+                        {result.scoreExplanation.improvementSuggestions.map((suggestion: string, index: number) => (
+                          <View key={`suggestion-${index}`} style={styles.improvementItem}>
+                            <Text style={styles.improvementBullet}>{index + 1}.</Text>
+                            <Text style={styles.improvementText}>{suggestion}</Text>
+                    </View>
+                  ))}
+                          </View>
+                    )}
+                </View>
+              )}
+            </View>
+            )}
 
             {/* 個人化健康風險評估 - 放在成分分析之前 */}
             {(diseases.length > 0 || healthGoals.length > 0 || allergens.length > 0) && (result.personalizedRiskAssessment || result.diseaseSpecificWarnings) && (
@@ -1342,9 +1536,16 @@ export default function PromptTestScreen() {
                             </View>
                           )}
                           {item.type === 'additive' && (
-                            <View style={[styles.badge, { backgroundColor: '#E5E7EB' }]}>
-                              <Text style={[styles.badgeText, { color: '#4B5563' }]}>添加物</Text>
-                            </View>
+                            <>
+                              <View style={[styles.badge, { backgroundColor: item.source === 'natural' ? '#D1FAE5' : '#E5E7EB' }]}>
+                                <Text style={[styles.badgeText, { color: item.source === 'natural' ? '#059669' : '#4B5563' }]}>
+                                  {item.source === 'natural' ? '天然' : '人工'}
+                                </Text>
+                              </View>
+                              <View style={[styles.badge, { backgroundColor: '#E5E7EB' }]}>
+                                <Text style={[styles.badgeText, { color: '#4B5563' }]}>添加物</Text>
+                              </View>
+                            </>
                           )}
                         </View>
                       </View>
@@ -1389,7 +1590,7 @@ export default function PromptTestScreen() {
                     </View>
                   ))}
                   
-                  {/* 低風險添加劑 */}
+                  {/* 低風險添加劑（天然來源） */}
                   {result.additives?.filter((a: any) => a.riskLevel === 'Low').map((additive: any, index: number) => (
                     <View key={`additive-low-${index}`} style={[styles.ingredientItem, { backgroundColor: theme.gray50 }]}>
                       <View style={styles.ingredientItemHeader}>
@@ -1397,6 +1598,11 @@ export default function PromptTestScreen() {
                         <View style={styles.badgeContainer}>
                           <View style={[styles.badge, { backgroundColor: '#D1FAE5' }]}>
                             <Text style={[styles.badgeText, { color: '#065F46' }]}>安全</Text>
+                          </View>
+                          <View style={[styles.badge, { backgroundColor: additive.source === 'natural' ? '#D1FAE5' : '#FEF3C7' }]}>
+                            <Text style={[styles.badgeText, { color: additive.source === 'natural' ? '#059669' : '#D97706' }]}>
+                              {additive.source === 'natural' ? '天然' : '人工'}
+                            </Text>
                           </View>
                           <View style={[styles.badge, { backgroundColor: '#E5E7EB' }]}>
                             <Text style={[styles.badgeText, { color: '#4B5563' }]}>添加物</Text>
@@ -1413,6 +1619,71 @@ export default function PromptTestScreen() {
                 </>
               )}
             </View>
+          </View>
+        )}
+
+        {/* Prompt 改進建議 - 元學習 */}
+        {result?.promptImprovementSuggestions && (
+          <View style={[styles.section, { backgroundColor: theme.cardBackground }]}>
+            <Pressable 
+              style={styles.promptImprovementHeader}
+              onPress={() => setIsPromptImprovementExpanded(!isPromptImprovementExpanded)}
+            >
+              <View style={styles.promptImprovementHeaderLeft}>
+                <Ionicons name="bulb" size={20} color="#8B5CF6" />
+                <Text style={[styles.promptImprovementTitle, { color: theme.primaryText }]}>
+                  🧠 Prompt 改進建議
+                </Text>
+              </View>
+              <Ionicons 
+                name={isPromptImprovementExpanded ? "chevron-up" : "chevron-down"} 
+                size={20} 
+                color={theme.secondaryText} 
+              />
+            </Pressable>
+
+            {isPromptImprovementExpanded && (
+              <View style={styles.promptImprovementContent}>
+                {/* 評分是否合理 + 簡短評估 */}
+                <View style={[styles.briefAssessmentBox, { 
+                  backgroundColor: result.promptImprovementSuggestions.isScoreReasonable ? '#D1FAE5' : '#FEE2E2',
+                  borderColor: result.promptImprovementSuggestions.isScoreReasonable ? '#10B981' : '#EF4444'
+                }]}>
+                  <View style={styles.assessmentHeader}>
+                    <Ionicons 
+                      name={result.promptImprovementSuggestions.isScoreReasonable ? "checkmark-circle" : "alert-circle"} 
+                      size={24} 
+                      color={result.promptImprovementSuggestions.isScoreReasonable ? '#10B981' : '#EF4444'} 
+                    />
+                    <Text style={[styles.assessmentStatus, { 
+                      color: result.promptImprovementSuggestions.isScoreReasonable ? '#065F46' : '#B91C1C' 
+                    }]}>
+                      {result.promptImprovementSuggestions.isScoreReasonable ? '評分合理' : '評分待優化'}
+                    </Text>
+                  </View>
+                  {result.promptImprovementSuggestions.briefAssessment && (
+                    <Text style={[styles.briefAssessmentText, { 
+                      color: result.promptImprovementSuggestions.isScoreReasonable ? '#047857' : '#DC2626' 
+                    }]}>
+                      {result.promptImprovementSuggestions.briefAssessment}
+                    </Text>
+                  )}
+                </View>
+
+                {/* 最重要的改進建議 */}
+                {result.promptImprovementSuggestions.topSuggestion && (
+                  <View style={[styles.topSuggestionBox, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}>
+                    <View style={styles.topSuggestionHeader}>
+                      <Ionicons name="bulb" size={20} color="#D97706" />
+                      <Text style={styles.topSuggestionLabel}>💡 最重要的改進建議</Text>
+                    </View>
+                    <Text style={styles.topSuggestionText}>
+                      {result.promptImprovementSuggestions.topSuggestion}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
         )}
 
@@ -1626,6 +1897,200 @@ const styles = StyleSheet.create({
   riskLevelText: {
     fontSize: 18,
     fontWeight: "600",
+  },
+  // 評分說明樣式
+  scoreExplanationSection: {
+    marginBottom: 16,
+  },
+  scoreExplanationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#EFF6FF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#3B82F6",
+  },
+  scoreExplanationHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  scoreExplanationTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  scoreExplanationContent: {
+    marginTop: 12,
+    paddingHorizontal: 4,
+  },
+  calculationBox: {
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  calculationLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1E40AF",
+    marginBottom: 6,
+  },
+  calculationText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1E40AF",
+    fontFamily: "monospace",
+  },
+  breakdownSection: {
+    marginBottom: 16,
+  },
+  breakdownTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 10,
+  },
+  breakdownItem: {
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  breakdownItemHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  breakdownItemName: {
+    fontSize: 14,
+    fontWeight: "600",
+    flex: 1,
+  },
+  breakdownItemPoints: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  breakdownItemReason: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  mainFactorsSection: {
+    marginBottom: 16,
+  },
+  mainFactorsTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 10,
+  },
+  mainFactorItem: {
+    flexDirection: "row",
+    marginBottom: 6,
+  },
+  mainFactorBullet: {
+    fontSize: 14,
+    marginRight: 8,
+    color: "#3B82F6",
+  },
+  mainFactorText: {
+    fontSize: 14,
+    flex: 1,
+    lineHeight: 20,
+  },
+  improvementSection: {
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  improvementTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#065F46",
+    marginBottom: 10,
+  },
+  improvementItem: {
+    flexDirection: "row",
+    marginBottom: 6,
+  },
+  improvementBullet: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginRight: 8,
+    color: "#10B981",
+  },
+  improvementText: {
+    fontSize: 14,
+    flex: 1,
+    lineHeight: 20,
+    color: "#065F46",
+  },
+  // Prompt 改進建議樣式
+  promptImprovementHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+    marginBottom: 12,
+  },
+  promptImprovementHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  promptImprovementTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    marginLeft: 8,
+  },
+  promptImprovementContent: {
+    paddingTop: 4,
+  },
+  // 簡化版 Prompt 改進建議樣式
+  briefAssessmentBox: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    marginBottom: 12,
+  },
+  assessmentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  assessmentStatus: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginLeft: 8,
+  },
+  briefAssessmentText: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginLeft: 32,
+  },
+  topSuggestionBox: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  topSuggestionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  topSuggestionLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#D97706",
+    marginLeft: 6,
+  },
+  topSuggestionText: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#92400E",
+    lineHeight: 22,
+    marginLeft: 26,
   },
   ingredientSection: {
     marginTop: 8,

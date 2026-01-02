@@ -82,7 +82,7 @@ analyzeFoodLabel() {
 
 #### 🔧 `.env` (1 行新增)
 ```bash
-EXPO_PUBLIC_GOOGLE_CLOUD_VISION_API_KEY=AIzaSyD3uj5gQsSiWs22az0hyxwyLYdQkJbLUNs
+EXPO_PUBLIC_GOOGLE_CLOUD_VISION_API_KEY=YOUR_API_KEY_HERE
 ```
 
 ---
